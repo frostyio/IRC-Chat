@@ -4,7 +4,6 @@ use super::{
 	Event, InnerServer, Receiver,
 };
 use bytes::BytesMut;
-use lib::encoding::Instruction;
 use lib::{hash, hex, hex_hash};
 use rand_core::OsRng;
 use rsa::{PaddingScheme, PublicKeyParts, RsaPrivateKey};
@@ -64,9 +63,6 @@ pub async fn new_peer(
 	tokio::spawn(listen_client(id.clone(), sender, read));
 	inner_server.add_client(id.clone(), client);
 
-	// temporary
-	inner_server.send_instructions_to_all(vec![Instruction::Instantiate("hello".to_string())]);
-
 	Ok(())
 }
 
@@ -88,6 +84,10 @@ pub async fn broker(mut receiver: Receiver, mut inner_server: InnerServer) {
 						inner_server.get_id()
 					);
 				}
+			}
+			Event::SendToAll(data) => inner_server.send_instructions_to_all(data),
+			Event::SendToOthers(sender_id, data) => {
+				inner_server.send_instructions_to_others(&sender_id, data)
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 use super::Sender;
 use crate::server::{feed::handle_feed, Event};
 use lib::{
-	encoding::Decoder,
+	encoding::{Decoder, Instruction},
 	encryption::{self, decrypt},
 	stream::{self, StreamOperation},
 };
@@ -53,8 +53,8 @@ impl Client {
 	pub fn make_payload(&self, sender: &str, buff: &[u8]) -> Vec<u8> {
 		let sender = sender.as_bytes().to_vec();
 		let encrypted_buf = encryption::encrypt(&self.shared_secret, buff);
-		let total_size = (sender.len() + encrypted_buf.len()) as u64;
-		[total_size.to_be_bytes().to_vec(), sender, encrypted_buf].concat()
+		let len = encrypted_buf.len() as u64;
+		[len.to_be_bytes().to_vec(), sender, encrypted_buf].concat()
 	}
 
 	pub fn make_and_send(&mut self, sender: &str, buff: &[u8]) {
@@ -70,5 +70,24 @@ impl Client {
 		let decoder = Decoder::from_bytes(decrypted_buff);
 
 		handle_feed(self, decoder.feed);
+	}
+
+	pub fn send_to_all(&mut self, feed: Vec<Instruction>) {
+		let _ = self.sender.send(Event::SendToAll(feed));
+	}
+
+	pub fn send_to_others(&mut self, feed: Vec<Instruction>) {
+		let _ = self.sender.send(Event::SendToOthers(self.id.clone(), feed));
+	}
+
+	pub fn send_message(&mut self, content: String) {
+		self.send_to_others(vec![Instruction::RecieveMessage(
+			self.username.clone(),
+			content,
+		)])
+	}
+
+	pub fn get_id(&self) -> &str {
+		&self.id
 	}
 }

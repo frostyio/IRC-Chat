@@ -27,9 +27,10 @@ pub fn decrypt(key_buff: &[u8], buffer: Vec<u8>) -> Vec<u8> {
 	let nonce = Nonce::from_slice(nonce_buff);
 	let cipher = Aes256Gcm::new_from_slice(key_buff).expect("invalid key");
 
-	cipher
-		.decrypt(nonce, cipher_text.as_ref())
-		.expect("failed to decrypt")
+	match cipher.decrypt(nonce, cipher_text.as_ref()) {
+		Ok(data) => data,
+		Err(e) => panic!("unable to decrypt: {:#?}", e.to_string()),
+	}
 }
 
 #[cfg(test)]

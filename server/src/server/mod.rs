@@ -14,6 +14,8 @@ pub enum Event {
 	SetServerId(String),
 	NewPeer(Sender, TcpStream, RsaPrivateKey),
 	RelayFeed(String, String, Vec<u8>), // ClientId, RecepientId, Encrypted Data
+	SendToAll(Vec<Instruction>),
+	SendToOthers(String, Vec<Instruction>),
 }
 pub type Sender = mpsc::UnboundedSender<Event>;
 pub type Receiver = mpsc::UnboundedReceiver<Event>;
@@ -89,6 +91,14 @@ impl InnerServer {
 		}
 	}
 
+	pub fn relay_data_to_others(&mut self, id: &str, buff: &[u8]) {
+		for (_, client) in self.clients.iter_mut() {
+			if client.get_id() != id {
+				client.make_and_send(&self.id, buff);
+			}
+		}
+	}
+
 	pub fn set_id(&mut self, id: String) {
 		self.id = id
 	}
@@ -100,5 +110,10 @@ impl InnerServer {
 	pub fn send_instructions_to_all(&mut self, feed: Vec<Instruction>) {
 		let data = Encoder::from_feed(feed).writer.dump();
 		self.relay_data_to_all(&data)
+	}
+
+	pub fn send_instructions_to_others(&mut self, sender_id: &str, feed: Vec<Instruction>) {
+		let data = Encoder::from_feed(feed).writer.dump();
+		self.relay_data_to_others(sender_id, &data)
 	}
 }

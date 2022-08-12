@@ -43,8 +43,8 @@ impl OuterClient {
 fn make_payload(recepient: &String, key: &[u8], buff: &[u8]) -> Vec<u8> {
 	let recepient = recepient.as_bytes().to_vec();
 	let encrypted_buf = encryption::encrypt(key, buff);
-	let total_size = (recepient.len() + encrypted_buf.len()) as u64;
-	[total_size.to_be_bytes().to_vec(), recepient, encrypted_buf].concat()
+	let len = encrypted_buf.len() as u64;
+	[len.to_be_bytes().to_vec(), recepient, encrypted_buf].concat()
 }
 
 pub struct InnerClient {
@@ -92,5 +92,9 @@ impl InnerClient {
 	pub fn send_instructions_to_all(&mut self, feed: Vec<Instruction>) {
 		let data = Encoder::from_feed(feed).writer.dump();
 		self.relay_data_to_all(&data)
+	}
+
+	pub fn send_message(&mut self, content: String) {
+		self.send_instructions_to_all(vec![Instruction::SendMessage(content)])
 	}
 }

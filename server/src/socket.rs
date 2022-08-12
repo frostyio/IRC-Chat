@@ -1,4 +1,5 @@
 use crate::server::{Event, OuterServer};
+use lib::hex_hash;
 use rsa::RsaPrivateKey;
 use std::{
 	error::Error,
@@ -27,10 +28,10 @@ impl Socket {
 	}
 
 	pub async fn listen(&self, outer: OuterServer) -> Result<(), Box<dyn std::error::Error>> {
-		println!(
-			"IRC chat server listening on {}",
-			self.listener.local_addr().unwrap().to_string()
-		);
+		let local_addr = self.listener.local_addr()?.to_string();
+		println!("IRC chat server listening on {}", local_addr);
+
+		outer.send(Event::SetServerId(hex_hash(local_addr.as_bytes())))?;
 
 		loop {
 			match self.listener.accept().await {

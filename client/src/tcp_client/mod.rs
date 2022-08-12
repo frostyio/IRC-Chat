@@ -1,14 +1,20 @@
 use self::broker::broker;
-use lib::encryption;
+use lib::{
+	encoding::{Encoder, Instruction},
+	encryption,
+};
 use std::collections::HashMap;
 use tokio::{net::tcp::OwnedWriteHalf, sync::mpsc};
 mod broker;
+mod feed;
+pub mod server;
 
 #[derive(Debug)]
 pub enum Event {
 	SetWriter(OwnedWriteHalf),
 	SetSharedKey(String, Vec<u8>), // recepient, key
 	Instantiate(String),           // username
+	ReadFeed(String, Vec<u8>),     // sender id, buf
 }
 pub type Sender = mpsc::UnboundedSender<Event>;
 pub type Receiver = mpsc::UnboundedReceiver<Event>;
@@ -32,10 +38,13 @@ impl OuterClient {
 	// }
 }
 
+// payload is in:
+// size hint (64 bits) | recepient (512 bits) | encrypted buffer
 fn make_payload(recepient: &String, key: &[u8], buff: &[u8]) -> Vec<u8> {
-	let mut payload = recepient.as_bytes().to_vec();
-	payload.append(&mut encryption::encrypt(key, buff));
-	payload
+	let recepient = recepient.as_bytes().to_vec();
+	let encrypted_buf = encryption::encrypt(key, buff);
+	let total_size = (recepient.len() + encrypted_buf.len()) as u64;
+	[total_size.to_be_bytes().to_vec(), recepient, encrypted_buf].concat()
 }
 
 pub struct InnerClient {
@@ -55,7 +64,16 @@ impl InnerClient {
 	}
 
 	pub fn set_key(&mut self, recepient: String, key: Vec<u8>) {
+		if recepient.len() != 64 {
+			// look at lib/src/lib.rs -> hex_hash
+			return println!("invalid key");
+		}
+
 		self.keys.insert(recepient, key);
+	}
+
+	pub fn get_key(&self, id: &str) -> Option<&Vec<u8>> {
+		self.keys.get(id)
 	}
 
 	pub fn relay_data_to_all(&mut self, buff: &[u8]) {
@@ -69,5 +87,10 @@ impl InnerClient {
 				};
 			}
 		}
+	}
+
+	pub fn send_instructions_to_all(&mut self, feed: Vec<Instruction>) {
+		let data = Encoder::from_feed(feed).writer.dump();
+		self.relay_data_to_all(&data)
 	}
 }

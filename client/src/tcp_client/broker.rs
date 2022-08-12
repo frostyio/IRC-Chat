@@ -1,3 +1,10 @@
+use lib::{
+	encoding::{Decoder, Instruction},
+	encryption::decrypt,
+};
+
+use crate::tcp_client::feed::handle_feed;
+
 use super::{Event, InnerClient, Receiver};
 
 pub async fn broker(mut receiver: Receiver, mut inner_client: InnerClient) {
@@ -14,8 +21,14 @@ pub async fn broker(mut receiver: Receiver, mut inner_client: InnerClient) {
 			}
 			Event::Instantiate(username) => {
 				// sort of a hello world
-				println!("sending hello world!");
-				inner_client.relay_data_to_all(username.as_bytes())
+				inner_client.send_instructions_to_all(vec![Instruction::Instantiate(username)])
+			}
+			Event::ReadFeed(sender_id, buf) => {
+				if let Some(secret) = inner_client.get_key(&sender_id) {
+					let data = decrypt(secret, buf);
+					let feed = Decoder::from_bytes(data);
+					handle_feed(&mut inner_client, feed.feed);
+				}
 			}
 		}
 	}

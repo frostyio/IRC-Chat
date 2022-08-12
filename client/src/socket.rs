@@ -1,5 +1,5 @@
-use crate::tcp_client::{Event, OuterClient};
-use lib::{hash, hex_hash};
+use crate::tcp_client::{server::listen_server, Event, OuterClient};
+use lib::{hash, hex, hex_hash};
 use rand_core::OsRng;
 use rsa::{PaddingScheme, PublicKey, RsaPublicKey};
 use std::{
@@ -94,9 +94,16 @@ impl Socket {
 				.to_string()
 				.as_bytes(),
 		);
+
+		#[cfg(debug_assertions)]
+		println!(
+			"the server's ({}) shared secret is: {}",
+			receipent.clone(),
+			hex(&shared_secret)
+		);
 		outer.send(Event::SetSharedKey(receipent, shared_secret))?;
 
 		outer.send(Event::Instantiate("frosty".to_string()))?;
-		loop {}
+		Ok(listen_server(read, outer).await?)
 	}
 }

@@ -3,8 +3,10 @@ name = "lib"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 sha3 = "0.10.2"
 aes-gcm = "0.10.1"
+bytes = "1.2.1"
+tokio = {version = "1.20.1", features = ["full"]}
+num-traits = "0.2.15"
+num-derive = "0.3.3"

@@ -42,7 +42,6 @@ mod tests {
 	#[test]
 	pub fn test_encryption() {
 		let key = Aes256Gcm::generate_key(&mut OsRng);
-		println!("{}", key.as_slice().len());
 
 		let slice_key = key.as_slice();
 		let data = b"hello world";

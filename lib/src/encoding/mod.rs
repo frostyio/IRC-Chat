@@ -15,7 +15,7 @@ pub enum Instruction {
 	NOP,
 	Instantiate(String),            // username
 	SendMessage(String),            // content
-	RecieveMessage(String, String), // author, content
+	ReceiveMessage(String, String), // author, content
 }
 
 #[derive(FromPrimitive)]
@@ -32,7 +32,7 @@ mod test {
 
 	#[test]
 	fn test_encoder_and_decoder() {
-		let feed = vec![Instruction::RecieveMessage(
+		let feed = vec![Instruction::ReceiveMessage(
 			"frosty".to_string(),
 			"stinky spike".to_string(),
 		)];

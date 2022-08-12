@@ -1,7 +1,7 @@
 use super::Sender;
 use crate::server::{feed::handle_feed, Event};
 use lib::{
-	encoding::{Decoder, Instruction},
+	encoding::{Decoder, Encoder, Instruction},
 	encryption::{self, decrypt},
 	stream::{self, StreamOperation},
 };
@@ -31,6 +31,7 @@ pub async fn listen_client(id: String, sender: Sender, mut stream: OwnedReadHalf
 pub struct Client {
 	#[allow(dead_code)]
 	id: String,
+	server_id: String,
 	write: OwnedWriteHalf,
 	shared_secret: Vec<u8>,
 	#[allow(dead_code)]
@@ -39,9 +40,16 @@ pub struct Client {
 }
 
 impl Client {
-	pub fn new(id: String, write: OwnedWriteHalf, shared_secret: &[u8], sender: Sender) -> Self {
+	pub fn new(
+		id: String,
+		write: OwnedWriteHalf,
+		shared_secret: &[u8],
+		sender: Sender,
+		server_id: String,
+	) -> Self {
 		Self {
 			id,
+			server_id,
 			write,
 			shared_secret: shared_secret.to_vec(),
 			sender,
@@ -65,11 +73,11 @@ impl Client {
 		}
 	}
 
-	pub fn read_feed(&mut self, buff: Vec<u8>) {
+	pub async fn read_feed(&mut self, buff: Vec<u8>) {
 		let decrypted_buff = decrypt(&self.shared_secret, buff);
 		let decoder = Decoder::from_bytes(decrypted_buff);
 
-		handle_feed(self, decoder.feed);
+		handle_feed(self, decoder.feed).await;
 	}
 
 	pub fn send_to_all(&mut self, feed: Vec<Instruction>) {
@@ -81,8 +89,21 @@ impl Client {
 	}
 
 	pub fn send_message(&mut self, content: String) {
-		self.send_to_others(vec![Instruction::RecieveMessage(
+		self.send_to_all(vec![Instruction::ReceiveMessage(
 			self.username.clone(),
+			content,
+		)])
+	}
+
+	pub fn send_local_instructions(&mut self, feed: Vec<Instruction>) {
+		let data = Encoder::from_feed(feed).writer.dump();
+		let id = self.server_id.clone();
+		self.make_and_send(&id, &data);
+	}
+
+	pub fn send_local_message(&mut self, content: String) {
+		self.send_local_instructions(vec![Instruction::ReceiveMessage(
+			"Server".to_string(),
 			content,
 		)])
 	}

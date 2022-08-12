@@ -22,7 +22,6 @@ pub async fn broker(mut receiver: Receiver, mut inner_client: InnerClient) {
 			Event::Instantiate(username) => {
 				// sort of a hello world
 				inner_client.send_instructions_to_all(vec![Instruction::Instantiate(username)]);
-				inner_client.send_message("Hello World!".to_string());
 			}
 			Event::ReadFeed(sender_id, buf) => {
 				if let Some(secret) = inner_client.get_key(&sender_id) {

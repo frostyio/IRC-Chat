@@ -67,9 +67,9 @@ impl InnerServer {
 		self.clients.insert(id.clone(), client);
 	}
 
-	pub fn read_feed(&mut self, id: &str, buff: Vec<u8>) {
+	pub async fn read_feed(&mut self, id: &str, buff: Vec<u8>) {
 		if let Some(client) = self.clients.get_mut(id) {
-			client.read_feed(buff);
+			client.read_feed(buff).await;
 		} else {
 			#[cfg(debug_assertions)]
 			eprintln!("attempting to read feed to invalid client with id: {id}");

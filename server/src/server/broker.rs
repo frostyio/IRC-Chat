@@ -16,6 +16,7 @@ pub async fn new_peer(
 	sender: Sender,
 	stream: TcpStream,
 	key: RsaPrivateKey,
+	server_id: String,
 ) -> Result<(), Box<dyn Error>> {
 	let addr = stream.peer_addr()?;
 	let id = hex_hash(addr.to_string().as_bytes());
@@ -59,7 +60,7 @@ pub async fn new_peer(
 		hex(&shared_secret).as_str()
 	);
 
-	let client = Client::new(id.clone(), write, &shared_secret, sender.clone());
+	let client = Client::new(id.clone(), write, &shared_secret, sender.clone(), server_id);
 	tokio::spawn(listen_client(id.clone(), sender, read));
 	inner_server.add_client(id.clone(), client);
 
@@ -71,11 +72,12 @@ pub async fn broker(mut receiver: Receiver, mut inner_server: InnerServer) {
 		match event {
 			Event::SetServerId(id) => inner_server.set_id(id),
 			Event::NewPeer(sender, stream, key) => {
-				let _ = new_peer(&mut inner_server, sender, stream, key).await;
+				let server_id = inner_server.get_id().to_string();
+				let _ = new_peer(&mut inner_server, sender, stream, key, server_id.clone()).await;
 			}
 			Event::RelayFeed(id, recepient_id, buf) => {
 				if &recepient_id == inner_server.get_id() {
-					inner_server.read_feed(&id, buf);
+					inner_server.read_feed(&id, buf).await;
 				} else {
 					// future E2EE
 					panic!(

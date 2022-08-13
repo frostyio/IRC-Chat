@@ -4,7 +4,7 @@ use rsa::{pkcs8::FromPrivateKey, PublicKeyParts, RsaPrivateKey};
 pub mod server;
 pub mod socket;
 
-const ADDRESS: &str = "127.0.0.1:8080";
+const ADDRESS: &str = "0.0.0.0:8080";
 
 #[tokio::main]
 async fn main() {

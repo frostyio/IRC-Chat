@@ -31,7 +31,10 @@ impl Socket {
 		let local_addr = self.listener.local_addr()?.to_string();
 		println!("IRC chat server listening on {}", local_addr);
 
-		outer.send(Event::SetServerId(hex_hash(local_addr.as_bytes())))?;
+		let my_addr = self.listener.local_addr().expect("ur invalid").to_string();
+		let me = hex_hash(my_addr.as_bytes());
+		println!("server is {}", me);
+		outer.send(Event::SetServerId(me))?;
 
 		loop {
 			match self.listener.accept().await {

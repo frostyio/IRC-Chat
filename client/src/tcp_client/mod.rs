@@ -13,7 +13,7 @@ pub mod server;
 
 #[derive(Debug)]
 pub enum Event {
-	SetWriter(OwnedWriteHalf),
+	SetWriter(OwnedWriteHalf),     // the writer
 	SetSharedKey(String, Vec<u8>), // recepient, key
 	Instantiate(String),           // username
 	ReadFeed(String, Vec<u8>),     // sender id, buf

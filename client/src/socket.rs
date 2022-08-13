@@ -7,7 +7,7 @@ use std::{
 	io::{IoSlice, Read, Write},
 	net::{AddrParseError, SocketAddr},
 };
-use tokio::net::TcpStream;
+use tokio::net::{tcp::OwnedReadHalf, TcpStream};
 use x25519_dalek::{EphemeralSecret, PublicKey as DHPublicKey};
 
 pub fn to_socket_addr(address: String) -> Result<std::net::SocketAddr, AddrParseError> {
@@ -17,6 +17,8 @@ pub fn to_socket_addr(address: String) -> Result<std::net::SocketAddr, AddrParse
 pub struct Socket {
 	socket_addr: SocketAddr,
 	public_key: RsaPublicKey,
+	outer: Option<OuterClient>,
+	read: Option<OwnedReadHalf>,
 }
 
 impl Socket {
@@ -26,10 +28,12 @@ impl Socket {
 		Ok(Self {
 			socket_addr,
 			public_key,
+			outer: None,
+			read: None,
 		})
 	}
 
-	pub async fn listen(
+	pub async fn initalize(
 		&mut self,
 		outer: OuterClient,
 	) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -43,8 +47,16 @@ impl Socket {
 			std_stream.local_addr().unwrap().to_string()
 		);
 
+		let me = hex_hash(
+			std_stream
+				.local_addr()
+				.expect("unable to get my address")
+				.to_string()
+				.as_bytes(),
+		);
+
 		// key exchange
-		let shared_secret = {
+		let (shared_secret, receipent) = {
 			let mut rng = rand2::thread_rng();
 
 			// create our private key & encrypt using the server's public key
@@ -81,15 +93,40 @@ impl Socket {
 			// std_stream.try_write(&public_encrypted)?;
 			std_stream.write_vectored(&[IoSlice::new(&public_encrypted)])?;
 
+			// send the client id along
+			std_stream.write(me.as_bytes())?;
+
 			// now that we have sent our public key encrypted using the dedicated server's public key
 			// we wait for a response for their DHE public key
 			let mut buff = [0u8; 32];
 			let mut got_key_buf = false;
+			println!("getting key...");
 			while !got_key_buf {
 				match std_stream.peek(&mut [0u8; 32]) {
 					Ok(_) => {
 						let _ = std_stream.read_exact(&mut buff);
 						got_key_buf = true;
+					}
+					Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+						println!("blocking... retrying");
+					}
+					Err(_) => panic!("weird error?"),
+				};
+
+				std::thread::sleep(std::time::Duration::from_millis(250));
+			}
+			println!("got key!");
+			let their_public = DHPublicKey::from(buff);
+
+			// same as above except for their hashed id
+			let mut buff = [0u8; 64];
+			let mut got_id_buf = false;
+			println!("getting id...");
+			while !got_id_buf {
+				match std_stream.peek(&mut [0u8; 64]) {
+					Ok(_) => {
+						let _ = std_stream.read_exact(&mut buff);
+						got_id_buf = true;
 					}
 					Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
 					Err(_) => panic!("weird error?"),
@@ -97,35 +134,36 @@ impl Socket {
 
 				std::thread::sleep(std::time::Duration::from_millis(250));
 			}
-
-			let their_public = DHPublicKey::from(buff);
+			println!("got id!");
+			let id = String::from_utf8(buff.to_vec())?;
 
 			// should zeroize our secret
-			hash(secret.diffie_hellman(&their_public).as_bytes())
+			(hash(secret.diffie_hellman(&their_public).as_bytes()), id)
 		};
 
 		let stream = TcpStream::from_std(std_stream)?;
 		let (read, write) = stream.into_split();
 		outer.send(Event::SetWriter(write))?;
 
-		// here we pave the way for future E2EE
-		let receipent = hex_hash(
-			read.peer_addr()
-				.expect("unable to get peer address")
-				.to_string()
-				.as_bytes(),
-		);
-
 		#[cfg(debug_assertions)]
 		println!(
-			"the server's ({}) shared secret is: {}",
+			"the server's ({}) shared secret is: {}\nmine address is: {}",
 			receipent.clone(),
-			hex(&shared_secret)
+			hex(&shared_secret),
+			me
 		);
 		outer.send(Event::SetSharedKey(receipent, shared_secret))?;
 
-		outer.send(Event::Instantiate("frosty".to_string()))?;
+		self.outer = Some(outer);
+		self.read = Some(read);
+		Ok(())
+	}
 
+	pub async fn listen(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+		let outer = self.outer.take().expect("Socket has not been initalized");
+		let read = self.read.take().expect("Socket has not been initalized");
+
+		println!("listening to server...");
 		listen_server(read, outer).await?;
 		Ok(())
 	}

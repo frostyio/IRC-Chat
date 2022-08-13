@@ -1,11 +1,9 @@
+use super::{Event, InnerClient, Receiver};
+use crate::tcp_client::feed::handle_feed;
 use lib::{
 	encoding::{Decoder, Instruction},
 	encryption::decrypt,
 };
-
-use crate::tcp_client::feed::handle_feed;
-
-use super::{Event, InnerClient, Receiver};
 
 pub async fn broker(mut receiver: Receiver, mut inner_client: InnerClient) {
 	while let Some(event) = receiver.recv().await {

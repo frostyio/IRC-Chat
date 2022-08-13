@@ -1,3 +1,5 @@
+use crate::window::WindowSender;
+
 use self::broker::broker;
 use lib::{
 	encoding::{Encoder, Instruction},
@@ -15,6 +17,7 @@ pub enum Event {
 	SetSharedKey(String, Vec<u8>), // recepient, key
 	Instantiate(String),           // username
 	ReadFeed(String, Vec<u8>),     // sender id, buf
+	SendMessage(String),           // content
 }
 pub type Sender = mpsc::UnboundedSender<Event>;
 pub type Receiver = mpsc::UnboundedReceiver<Event>;
@@ -33,9 +36,9 @@ impl OuterClient {
 		self.0.send(event)
 	}
 
-	// pub fn sender(&self) -> Sender {
-	// 	self.0.clone()
-	// }
+	pub fn sender(&self) -> Sender {
+		self.0.clone()
+	}
 }
 
 // payload is in:
@@ -50,12 +53,14 @@ fn make_payload(recepient: &String, key: &[u8], buff: &[u8]) -> Vec<u8> {
 pub struct InnerClient {
 	keys: HashMap<String, Vec<u8>>,
 	writer: Option<OwnedWriteHalf>,
+	window_sender: WindowSender,
 }
 impl InnerClient {
-	pub fn new() -> Self {
+	pub fn new(window_sender: WindowSender) -> Self {
 		Self {
 			keys: HashMap::new(),
 			writer: None,
+			window_sender,
 		}
 	}
 

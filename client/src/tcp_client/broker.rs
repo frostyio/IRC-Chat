@@ -30,6 +30,7 @@ pub async fn broker(mut receiver: Receiver, mut inner_client: InnerClient) {
 					handle_feed(&mut inner_client, feed.feed);
 				}
 			}
+			Event::SendMessage(content) => inner_client.send_message(content),
 		}
 	}
 }

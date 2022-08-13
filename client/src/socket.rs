@@ -4,9 +4,10 @@ use rand_core::OsRng;
 use rsa::{PaddingScheme, PublicKey, RsaPublicKey};
 use std::{
 	error::Error,
+	io::{IoSlice, Read, Write},
 	net::{AddrParseError, SocketAddr},
 };
-use tokio::{io::AsyncReadExt, net::TcpStream};
+use tokio::net::TcpStream;
 use x25519_dalek::{EphemeralSecret, PublicKey as DHPublicKey};
 
 pub fn to_socket_addr(address: String) -> Result<std::net::SocketAddr, AddrParseError> {
@@ -19,7 +20,7 @@ pub struct Socket {
 }
 
 impl Socket {
-	pub async fn new(address: String, public_key: RsaPublicKey) -> Result<Self, Box<dyn Error>> {
+	pub fn new(address: String, public_key: RsaPublicKey) -> Result<Self, Box<dyn Error>> {
 		let socket_addr = to_socket_addr(address)?;
 
 		Ok(Self {
@@ -28,13 +29,18 @@ impl Socket {
 		})
 	}
 
-	pub async fn listen(&mut self, outer: OuterClient) -> Result<(), Box<dyn std::error::Error>> {
-		let stream = TcpStream::connect(self.socket_addr).await?;
-		let (mut read, write) = stream.into_split();
+	pub async fn listen(
+		&mut self,
+		outer: OuterClient,
+	) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+		// tokio's TcpStream does not work here as various things do not implement Send + Sync when awaiting for certain closures I guess?
+		// needed at key exchange, would error when awaiting
+		let mut std_stream = std::net::TcpStream::connect(self.socket_addr)?;
+		std_stream.set_nonblocking(true)?;
 
 		println!(
 			"IRC chat client listening on {}",
-			read.local_addr().unwrap().to_string()
+			std_stream.local_addr().unwrap().to_string()
 		);
 
 		// key exchange
@@ -72,19 +78,34 @@ impl Socket {
 			let public_encrypted = self
 				.public_key
 				.encrypt(&mut rng, padding, &public_bytes[..])?;
-			write.try_write(&public_encrypted)?;
+			// std_stream.try_write(&public_encrypted)?;
+			std_stream.write_vectored(&[IoSlice::new(&public_encrypted)])?;
 
 			// now that we have sent our public key encrypted using the dedicated server's public key
 			// we wait for a response for their DHE public key
 			let mut buff = [0u8; 32];
-			let _ = read.readable().await;
-			read.read_exact(&mut buff).await?;
+			let mut got_key_buf = false;
+			while !got_key_buf {
+				match std_stream.peek(&mut [0u8; 32]) {
+					Ok(_) => {
+						let _ = std_stream.read_exact(&mut buff);
+						got_key_buf = true;
+					}
+					Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+					Err(_) => panic!("weird error?"),
+				};
+
+				std::thread::sleep(std::time::Duration::from_millis(250));
+			}
+
 			let their_public = DHPublicKey::from(buff);
 
 			// should zeroize our secret
 			hash(secret.diffie_hellman(&their_public).as_bytes())
 		};
 
+		let stream = TcpStream::from_std(std_stream)?;
+		let (read, write) = stream.into_split();
 		outer.send(Event::SetWriter(write))?;
 
 		// here we pave the way for future E2EE
@@ -104,6 +125,8 @@ impl Socket {
 		outer.send(Event::SetSharedKey(receipent, shared_secret))?;
 
 		outer.send(Event::Instantiate("frosty".to_string()))?;
-		Ok(listen_server(read, outer).await?)
+
+		listen_server(read, outer).await?;
+		Ok(())
 	}
 }
